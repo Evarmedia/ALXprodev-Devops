@@ -4,6 +4,7 @@
 DATA_DIR="pokemon_data"
 REPORT_FILE="pokemon_stats.csv"
 ERROR_LOG="summary_errors.txt"
+TEMP_FILE="temp_stats.txt"
 
 # Check if data directory exists
 if [ ! -d "$DATA_DIR" ]; then
@@ -21,28 +22,32 @@ for file in "$DATA_DIR"/*.json; do
         # Extract and format data using jq
         jq -r '
             . as $pokemon |
-            # Convert height from decimeters to meters and weight from hectograms to kg
             {
                 name: ($pokemon.name | ascii_upcase),
                 height: ($pokemon.height / 10),
                 weight: ($pokemon.weight / 10)
             } |
-            # Format as CSV line
             [.name, .height, .weight] |
             @csv
         ' "$file" >> "$REPORT_FILE" 2>> "$ERROR_LOG"
     fi
 done
 
-# Calculate averages using awk
+# Use sed to prepare data for calculation
+# Remove header, remove quotes, and format for processing
+sed '1d' "$REPORT_FILE" | \
+    sed 's/"//g' | \
+    sed 's/,/ /g' > "$TEMP_FILE"
+
+# Calculate averages using awk on the prepared data
 echo -e "\nCalculating statistics..."
-awk -F',' '
+awk '
     BEGIN {
         total_height = 0
         total_weight = 0
         count = 0
     }
-    NR > 1 {  # Skip header row
+    {
         total_height += $2
         total_weight += $3
         count++
@@ -65,7 +70,10 @@ awk -F',' '
             print "No data found to analyze"
         }
     }
-' "$REPORT_FILE"
+' "$TEMP_FILE"
+
+# Clean up temporary file
+rm -f "$TEMP_FILE"
 
 # Check for errors
 if [ -s "$ERROR_LOG" ]; then
